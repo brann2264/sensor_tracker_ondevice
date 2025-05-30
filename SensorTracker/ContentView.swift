@@ -70,6 +70,7 @@ struct ContentView: View {
     
     // socket
     @State var socketClient: SocketClient?
+    @StateObject  var client = StreamClient(host: "10.105.238.137", port: 8889)
     
     var body: some View {
         ZStack{
@@ -219,6 +220,15 @@ struct ContentView: View {
                         Button(action: {
                             self.isPhoneSelected.toggle()
                             togglePhone()
+                            
+                            if client.isConnected{
+                                client.stop()
+                            }
+                            else{
+                                debugPrint("starting phone connection")
+                                client.start()
+                            }
+                            
                         }) {
                             Image(systemName: "iphone.gen3")
                                 .resizable()

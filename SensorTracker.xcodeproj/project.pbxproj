@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3B69F51D2DCB293C00490623 /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 3B69F51C2DCB293C00490623 /* Collections */; };
 		971577652CAB7DF5003B6C4D /* SensorTracker Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 971577642CAB7DF5003B6C4D /* SensorTracker Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -62,6 +63,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3B69F51D2DCB293C00490623 /* Collections in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -117,6 +119,7 @@
 			);
 			name = SensorTracker;
 			packageProductDependencies = (
+				3B69F51C2DCB293C00490623 /* Collections */,
 			);
 			productName = SensorTracker;
 			productReference = 971577542CAB7DE8003B6C4D /* SensorTracker.app */;
@@ -153,7 +156,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1600;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 1620;
 				TargetAttributes = {
 					971577532CAB7DE8003B6C4D = {
 						CreatedOnToolsVersion = 16.0;
@@ -172,6 +175,9 @@
 			);
 			mainGroup = 9715774B2CAB7DE8003B6C4D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3B69F51B2DCB293B00490623 /* XCRemoteSwiftPackageReference "swift-collections" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 971577552CAB7DE8003B6C4D /* Products */;
 			projectDirPath = "";
@@ -260,6 +266,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -321,6 +328,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -350,21 +358,22 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"SensorTracker Watch App/Preview Content\"";
-				DEVELOPMENT_TEAM = 3F2DL4L5F5;
+				DEVELOPMENT_TEAM = B3M8B2TH5U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=*]" = "";
 				INFOPLIST_KEY_CFBundleDisplayName = "Sensor Tracker";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app needs access to HealthKit to read your health data like heart rate during workouts.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs access to HealthKit to log and manage your workouts.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "VascoXu.Sensor-Tracker";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "Sensor-Track";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "VascoXu.Sensor-Tracker.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = "Sensor-Track.watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = watchos;
@@ -386,7 +395,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"SensorTracker Watch App/Preview Content\"";
-				DEVELOPMENT_TEAM = 3F2DL4L5F5;
+				DEVELOPMENT_TEAM = B3M8B2TH5U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Sensor Tracker";
@@ -394,13 +403,13 @@
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs access to HealthKit to log and manage your workouts.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "VascoXu.Sensor-Tracker";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "Sensor-Track";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "VascoXu.Sensor-Tracker.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = "Sensor-Track.watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = watchos;
@@ -421,7 +430,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"SensorTracker/Preview Content\"";
-				DEVELOPMENT_TEAM = 3F2DL4L5F5;
+				DEVELOPMENT_TEAM = B3M8B2TH5U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Sensor Tracker";
@@ -437,7 +446,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "VascoXu.Sensor-Tracker";
+				PRODUCT_BUNDLE_IDENTIFIER = "Sensor-Track";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -454,7 +463,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"SensorTracker/Preview Content\"";
-				DEVELOPMENT_TEAM = 3F2DL4L5F5;
+				DEVELOPMENT_TEAM = B3M8B2TH5U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Sensor Tracker";
@@ -470,7 +479,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "VascoXu.Sensor-Tracker";
+				PRODUCT_BUNDLE_IDENTIFIER = "Sensor-Track";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -511,6 +520,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3B69F51B2DCB293B00490623 /* XCRemoteSwiftPackageReference "swift-collections" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-collections.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3B69F51C2DCB293C00490623 /* Collections */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3B69F51B2DCB293B00490623 /* XCRemoteSwiftPackageReference "swift-collections" */;
+			productName = Collections;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9715774C2CAB7DE8003B6C4D /* Project object */;
 }
