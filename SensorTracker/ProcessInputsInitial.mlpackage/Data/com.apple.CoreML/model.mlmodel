@@ -1,197 +1,0 @@
-ê
-
-	ori_raw_1*	
- €
-
-acc_raw*	
- €
-
-acc_offsets*	
- €
-
-smpl2imu
-*
- €
-
-device2bone*	
- €R
-var_308*	
--< €R
-const_6	*
- €R
-imu
-*
--< €¢£¢:
-+com.github.apple.coremltools.source_dialectTorchScript¢-
-$com.github.apple.coremltools.version8.3.0¢3
-#com.github.apple.coremltools.sourcetorch==2.1.2²ˆ™	
-main	
-%
-	ori_raw_1
-
-
-
-
-#
-acc_raw
-
-
-
-
-'
-acc_offsets
-
-
-
-
-
-smpl2imu
-
-
-
-'
-device2bone
-
-
-
-CoreML5Æ
-CoreML5ºvar_308const_6imu~
-const
-imu
-
--
-<*
-name
-	
-"
-imu*?
-val8
-
--
-<*"
-@model_path/weights/weight.bin@’
-const#
-var_308
-
-
--
-<*F
-val?
-
-
--
-<*#
-@model_path/weights/weight.binÀU*
-name
-
-
-"
-op_308_
-const
-const_6
-
-
-*
-name
-
-"	
-const_6*
-val
-
-
-
-
--n
-identity
-x
-
-	ori_raw_1)
-ori_raw_1_tmp
-
-
-
-*#
-name
-
-"
-ori_raw_1_tmph
-identity
-x
-	
-acc_raw'
-acc_raw_tmp
-
-
-
-*!
-name
-
-"
-acc_raw_tmpt
-identity
-x
-
-acc_offsets+
-acc_offsets_tmp
-
-
-
-*%
-name
-
-"
-acc_offsets_tmpe
-identity
-x
-
-
-smpl2imu"
-smpl2imu_tmp
-
-
-*"
-name
-
-"
-smpl2imu_tmpt
-identity
-x
-
-device2bone+
-device2bone_tmp
-
-
-
-*%
-name
-
-"
-device2bone_tmp"ç
-	buildInfoÙ"
-
-
-Æ"Ã
-8
-!
-
-"
-coremltools-version
-
-	"
-8.3.0
-@
-)
-!
-"
-coremltools-component-torch
-
-	"
-2.1.2
-E
-(
- 
-"
-coremltools-source-dialect
-
-"
-TorchScript

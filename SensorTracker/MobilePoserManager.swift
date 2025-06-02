@@ -42,9 +42,11 @@ struct Constants {
 class MobilePoserManager {
     
     // class variables here
-    private var model: MobilePoser
-    private var processInitial: ProcessInputsInitial
-    private var processRegular: ProcessInputs
+    private var model: MobilePoserComplete
+    private var modelInitial: MobilePoserCompleteInitial
+    
+//    private var processInitial: ProcessInputsInitial
+//    private var processRegular: ProcessInputs
     
     private var h: MLMultiArray
     private var c: MLMultiArray
@@ -62,9 +64,10 @@ class MobilePoserManager {
     init(){
         
         let config = MLModelConfiguration()
-        self.model = try! MobilePoser(configuration: config)
-        self.processInitial = try! ProcessInputsInitial(configuration: config)
-        self.processRegular = try! ProcessInputs(configuration: config)
+        self.model = try! MobilePoserComplete(configuration: config)
+//        self.processInitial = try! ProcessInputsInitial(configuration: config)
+//        self.processRegular = try! ProcessInputs(configuration: config)
+        self.modelInitial = try! MobilePoserCompleteInitial(configuration: MLModelConfiguration())
 
         do {
             let shape: [NSNumber] = [2, 1, 256].map { NSNumber(value: $0) }
@@ -95,41 +98,50 @@ class MobilePoserManager {
                                               joints: MLMultiArray,
                                               rootPos: MLMultiArray,
                                               contact: MLMultiArray)? {
-        var imu_input: MLMultiArray!
-        var input_length: MLMultiArray!
+        var curr_pose : MLMultiArray
+        var pred_joints : MLMultiArray
+        var pred_vel : MLMultiArray
+        var contact : MLMultiArray
         
         if self.imuHistory == nil {
-            let outputPreprocess = try! processInitial.prediction(ori_raw_1: ori_raw,
-                                                                  acc_raw: acc_raw,
-                                                                  acc_offsets: acc_offsets,
-                                                                  smpl2imu: smpl2imu,
-                                                                  device2bone: device2bone)
-            imu_input = outputPreprocess.var_308
-            input_length = outputPreprocess.const_6
-            self.imuHistory = outputPreprocess.imu
+            guard let output = try? self.modelInitial.prediction(ori_raw_1: ori_raw,
+                                                          acc_raw: acc_raw,
+                                                          acc_offsets: acc_offsets,
+                                                          smpl2imu: smpl2imu,
+                                                          device2bone: device2bone,
+                                                          h: self.h,
+                                                          c_1: self.c)
+            else {
+                return nil
+            }
+            curr_pose = output.var_632
+            pred_joints = output.var_641
+            pred_vel = output.var_665
+            contact = output.var_647
+            self.h = output.var_434
+            self.c = output.var_435
+            self.imuHistory = output.imu
+            
         } else {
-            let outputPreprocess = try! processRegular.prediction(imu_1: self.imuHistory!,
-                                                               ori_raw_1: ori_raw,
-                                                               acc_raw: acc_raw,
-                                                               acc_offsets: acc_offsets,
-                                                               smpl2imu: smpl2imu,
-                                                               device2bone: device2bone)
-            imu_input = outputPreprocess.var_317
-            input_length = outputPreprocess.const_6
-            self.imuHistory = outputPreprocess.imu
+            guard let output = try? self.model.prediction(imu_1: self.imuHistory!,
+                                                          ori_raw_1: ori_raw,
+                                                          acc_raw: acc_raw,
+                                                          acc_offsets: acc_offsets,
+                                                          smpl2imu: smpl2imu,
+                                                          device2bone: device2bone,
+                                                          h: self.h,
+                                                          c_1: self.c)
+            else {
+                return nil
+            }
+            curr_pose = output.var_641
+            pred_joints = output.var_650
+            pred_vel = output.var_674
+            contact = output.var_656
+            self.h = output.var_443
+            self.c = output.var_444
+            self.imuHistory = output.imu
         }
-        
-        
-        guard let output = try? self.model.prediction(batch: imu_input, h: self.h, c: self.c, input_lengths: input_length) else {
-            return nil
-        }
-        
-        let curr_pose = output.var_385
-        let pred_joints = output.var_394
-        let pred_vel = output.var_418
-        let contact = output.var_400
-        self.h = output.var_187
-        self.c = output.var_188
         
         let lfootPos = vector3_fromArray(from: pred_joints, at: 10)
         let rfootPos = vector3_fromArray(from: pred_joints, at: 11)
@@ -140,24 +152,17 @@ class MobilePoserManager {
           ? (lastLFootPos - lfootPos + gravityVelocity)
           : (lastRFootPos - rfootPos + gravityVelocity)
 
-        // compute your blend weight from the max contact probability
         let w = probToWeight(max(contactX, contactY))
 
-        // linear interpolation: predVel + (contactVel – predVel) * w
+        // linear interp for velcoity
         var velocity = lerp(predVel, contactVel, t: w)
 
-        // figure out where the “lowest” foot is in Y
         let currentFootY = currentRootY + min(lfootPos.y, rfootPos.y)
-        // if applying this velocity would push you below the floor, clamp
         if currentFootY + velocity.y <= floorY {
           velocity.y = floorY - currentFootY
         }
-
-//        guard let curr_pose = try? self.rotation2AxisAngleFunc.prediction(r: pred_pose).var_97 else {
-//            return nil
-//        }
         
-        // finally, update all your state
+        // update states
         currentRootY += velocity.y
         lastLFootPos = lfootPos
         lastRFootPos = rfootPos
@@ -165,7 +170,6 @@ class MobilePoserManager {
         let rootPos = try! mlArray_fromVector3(from: lastRootPos)
         
         return (curr_pose, pred_joints, rootPos, contact)
-//        return (pred_pose, pred_joints, pred_vel, contact)
     }
 }
 
