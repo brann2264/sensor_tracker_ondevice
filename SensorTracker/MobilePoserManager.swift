@@ -10,6 +10,7 @@ import simd
 import Collections
 import Spatial
 import Network
+import CoreMotion
 
 struct Constants {
     static let DEVICE_IDS: [String: Int] = [
@@ -44,6 +45,7 @@ class MobilePoserManager {
     // class variables here
     private var model: MobilePoserComplete
     private var modelInitial: MobilePoserCompleteInitial
+    private var calibrator: Calibrator
     
 //    private var processInitial: ProcessInputsInitial
 //    private var processRegular: ProcessInputs
@@ -64,10 +66,10 @@ class MobilePoserManager {
     init(){
         
         let config = MLModelConfiguration()
+        config.computeUnits = .all
         self.model = try! MobilePoserComplete(configuration: config)
-//        self.processInitial = try! ProcessInputsInitial(configuration: config)
-//        self.processRegular = try! ProcessInputs(configuration: config)
         self.modelInitial = try! MobilePoserCompleteInitial(configuration: MLModelConfiguration())
+        self.calibrator = try! Calibrator(configuration: MLModelConfiguration())
 
         do {
             let shape: [NSNumber] = [2, 1, 256].map { NSNumber(value: $0) }
@@ -102,7 +104,7 @@ class MobilePoserManager {
         var pred_joints : MLMultiArray
         var pred_vel : MLMultiArray
         var contact : MLMultiArray
-        
+        let startTime = DispatchTime.now()
         if self.imuHistory == nil {
             guard let output = try? self.modelInitial.prediction(ori_raw_1: ori_raw,
                                                           acc_raw: acc_raw,
@@ -142,6 +144,15 @@ class MobilePoserManager {
             self.c = output.var_444
             self.imuHistory = output.imu
         }
+        
+        let endTime = DispatchTime.now()
+        let elapsedTime = endTime.uptimeNanoseconds - startTime.uptimeNanoseconds // Time in nanoseconds (UInt64)
+        let durationInSeconds = Double(elapsedTime) / 1_000_000_000.0 // Convert to seconds
+        
+        print("----------------------------------------------------")
+        print("Model Execution time:")
+        print("Nanoseconds: \(elapsedTime)")
+        print("Seconds: \(String(format: "%.6f", durationInSeconds)) seconds") // Formatted to 6 decimal places
         
         let lfootPos = vector3_fromArray(from: pred_joints, at: 10)
         let rfootPos = vector3_fromArray(from: pred_joints, at: 11)
@@ -420,130 +431,115 @@ class StreamClient: ObservableObject {
 // Adapted from sensor_utils.py
 //
 
-//class SensorDataManager {
-//
-//    private let BUFFER_SIZE = 50
-//
-//    typealias DeviceID = Int
-//    typealias Vector3    = SIMD3<Double>
-//    
-//    private(set) var rawAccBuffer   = Dictionary<DeviceID, Deque<Vector3>>()
-//    private(set) var rawOriBuffer   = Dictionary<DeviceID, Deque<simd_quatd>>()
-//    private(set) var calibrationQuats = Dictionary<DeviceID, simd_quatd>()
-//    private(set) var virtualAcc     = Dictionary<DeviceID, Vector3>()
-//    private(set) var virtualOri     = Dictionary<DeviceID, simd_quatd>()
-//    private(set) var referenceTimes = Dictionary<DeviceID, (Double, Double)>()
-//    
-//    init() {
-//        for id in Constants.DEVICE_IDS.values {
-//            rawAccBuffer[id]       = []
-//            rawOriBuffer[id]       = []
-//            calibrationQuats[id]   = simd_quatd(ix:0, iy:0, iz:0, r:1)
-//            virtualAcc[id]         = Vector3(0, 0, 0)
-//            virtualOri[id]         = simd_quatd(ix:0, iy:0, iz:0, r:1)
-//            referenceTimes[id]     = (-1, -1)
-//        }
-//    }
-//        
-//
-//    func update(
-//        deviceID: DeviceID,
-//        currAcc: Vector3,
-//        currOri: simd_quatd,
-//        timestamps: (Double, Double)
-//    ) -> Double {
-//        
-//        if referenceTimes[deviceID] == nil {
-//            referenceTimes[deviceID] = timestamps
-//        }
-//        
-//        guard let ref = referenceTimes[deviceID] else {
-//            return timestamps.1
-//        }
-//        
-//        let currTimestamp = ref.0 + (timestamps.1 - ref.1)
-//        
-//        // Store acc
-//        rawAccBuffer[deviceID]?.append(currAcc)
-//        if let count = rawAccBuffer[deviceID]?.count, count > BUFFER_SIZE {
-//            rawAccBuffer[deviceID]?.removeFirst()
-//        }
-//        
-//        // Store ori
-//        rawOriBuffer[deviceID]?.append(currOri)
-//        if let count = rawOriBuffer[deviceID]?.count, count > BUFFER_SIZE {
-//            rawOriBuffer[deviceID]?.removeFirst()
-//        }
-//        
-//        // Update last
-//        referenceTimes[deviceID] = (ref.0, timestamps.1)
-//        return currTimestamp
-//    }
-//    
-//    /// Compute a mean “zero” quaternion from the last 30 samples
-//    func calibrate() {
-//        for (id, oriBuf) in rawOriBuffer {
-//            guard oriBuf.count >= 30 else {
-//                print("Not enough data to calibrate for device \(id).")
-//                continue
-//            }
-//            
-//            let last30 = oriBuf.suffix(30)
-//            let ref = last30[0]
-//            // Simple average then normalize:
-//            var sum = SIMD4<Double>.zero
-//            for q in last30 {
-//              let v = q.vector
-//              // dot(ref, q) < 0 → opposite hemisphere
-//              sum += (dot(ref.vector, v) < 0) ? -v : v
-//            }
-//
-//            calibrationQuats[id] = simd_quatd(vector:simd_normalize(sum))
-//        }
-//    }
-//    
-//    /// Helpers to read back the latest values
-//    func getTimestamp(deviceID: DeviceID) -> Double? {
-//        return referenceTimes[deviceID]?.1
-//    }
-//    func getOrientation(deviceID: DeviceID) -> simd_quatd? {
-//        return rawOriBuffer[deviceID]?.last
-//    }
-//    func getAcceleration(deviceID: DeviceID) -> Vector3? {
-//        return rawAccBuffer[deviceID]?.last
-//    }
-//    
-//    /// Update your “virtual” outputs
-//    func updateVirtual(deviceID: DeviceID,
-//                       glbAcc: Vector3,
-//                       glbOri: simd_quatd)
-//    {
-//        virtualAcc[deviceID] = glbAcc
-//        virtualOri[deviceID] = glbOri
-//    }
-//}
-//
-//func sensor2global(
-//  ori: simd_quatd,
-//  acc: SIMD3<Double>,
-//  calibrationQuats: [Int: simd_quatd],
-//  deviceID: Int
-//) -> (globalOri: simd_quatd, globalAcc: SIMD3<Double>) {
-//  
-//    guard let deviceMeanQuat = calibrationQuats[deviceID] else {
-//      fatalError("No calibration quaternion for device \(deviceID)")
-//    }
-//    
-//    let ogMat       = double3x3(ori)
-//    let globalFrame = double3x3(deviceMeanQuat)
-//    
-//
-//    let globalMat = globalFrame.transpose * ogMat
-//    let globalOri = simd_quatd(globalMat)
-//    
-//    let accInBody = ogMat * acc
-//    let globalAcc = globalFrame.transpose * accInBody
-//    
-//    return (globalOri, globalAcc)
-//}
+class SensorDataManager {
+
+    private var buffer_size = 45
+
+    typealias DeviceID = Int
+    
+    private(set) var rawAccBuffer   = Dictionary<DeviceID, Deque<SIMD3<Double>>>()
+    private(set) var rawOriBuffer   = Dictionary<DeviceID, Deque<SIMD4<Double>>>()
+    private(set) var referenceTimes = Dictionary<DeviceID, (Double, Double)>()
+    
+    init() {
+        for id in Constants.DEVICE_IDS.values {
+            rawAccBuffer[id]       = []
+            rawOriBuffer[id]       = []
+            referenceTimes[id]     = (-1, -1)
+        }
+    }
+        
+
+    func update(
+        deviceID: DeviceID,
+        motion: CMDeviceMotion,
+        timestamps: (Double, Double)
+    ) -> Double {
+        
+        if referenceTimes[deviceID] == nil {
+            referenceTimes[deviceID] = timestamps
+        }
+        
+        guard let ref = referenceTimes[deviceID] else {
+            return timestamps.1
+        }
+        
+        let currTimestamp = ref.0 + (timestamps.1 - ref.1)
+        
+        let currAcc = SIMD3<Double>(motion.userAcceleration.x, motion.userAcceleration.y, motion.userAcceleration.z)
+        let currOri = SIMD4<Double>(motion.attitude.quaternion.x, motion.attitude.quaternion.y, motion.attitude.quaternion.z, motion.attitude.quaternion.w)
+        
+        rawAccBuffer[deviceID]?.append(currAcc)
+        if let count = rawAccBuffer[deviceID]?.count, count > buffer_size {
+            rawAccBuffer[deviceID]?.removeFirst()
+        }
+        
+        rawOriBuffer[deviceID]?.append(currOri)
+        if let count = rawOriBuffer[deviceID]?.count, count > buffer_size {
+            rawOriBuffer[deviceID]?.removeFirst()
+        }
+        
+        // Update last
+        referenceTimes[deviceID] = (ref.0, timestamps.1)
+        return currTimestamp
+    }
+    
+    func getTimestamp(deviceID: DeviceID) -> Double? {
+        return referenceTimes[deviceID]?.1
+    }
+    func getOrientation(deviceID: DeviceID) -> SIMD4<Double>? {
+        return rawOriBuffer[deviceID]?.last
+    }
+    func getAcceleration(deviceID: DeviceID) -> SIMD3<Double>? {
+        return rawAccBuffer[deviceID]?.last
+    }
+    
+    func getCurrentBuffer() -> (Dictionary<DeviceID, Deque<SIMD3<Double>>>, Dictionary<DeviceID, Deque<SIMD4<Double>>>){
+        return (rawAccBuffer, rawOriBuffer)
+    }
+    
+    func getMeanMeasurement(numSeconds: TimeInterval = 3.0,
+                                bufferLen: Int = 120) -> (meanQuaternions: Dictionary<DeviceID, SIMD4<Double>>,
+                                                          meanAccelerations: Dictionary<DeviceID, SIMD3<Double>>) {
+        let oldBufferLen = self.buffer_size
+        self.buffer_size = bufferLen
+        
+        Thread.sleep(forTimeInterval: numSeconds)
+        
+        let (accBuffer, oriBuffer) = getCurrentBuffer()
+        
+        self.buffer_size = oldBufferLen
+        
+        var accMeans = Dictionary<DeviceID, SIMD3<Double>>()
+        var oriMeans = Dictionary<DeviceID, SIMD4<Double>>()
+        
+        for id in Constants.DEVICE_IDS.values {
+            
+            var accSum = SIMD3<Double>()
+            var oriSum = SIMD4<Double>()
+            var accCount = 0
+            var oriCount = 0
+            
+            let accD = accBuffer[id]!
+            let oriD = oriBuffer[id]!
+            
+            for acc in accD{
+                accSum += acc
+                accCount += 1
+            }
+            
+            for ori in oriD{
+                oriSum += ori
+                oriCount += 1
+            }
+            
+            accMeans[id] = accSum / Double(accCount)
+            oriMeans[id] = oriSum / Double(oriCount)
+        }
+        
+        return (oriMeans, accMeans)
+        
+    }
+
+}
 

@@ -65,7 +65,10 @@ struct ContentView: View {
          }
      }
     
+    @State var sensorDataManager: SensorDataManager
+    
     init() {
+        self.sensorDataManager = SensorDataManager()
     }
     
     // socket
@@ -453,12 +456,14 @@ struct ContentView: View {
                 if let motion = motion {
                     let currentTime = NSDate().timeIntervalSince1970
                     
-                    if let socketClient = self.socketClient {
-                        if socketClient.connection.state == .ready {
-                            let text = "phone:\(currentTime) \(motion.timestamp) \(motion.userAcceleration.x) \(motion.userAcceleration.y) \(motion.userAcceleration.z) \(motion.attitude.quaternion.x) \(motion.attitude.quaternion.y) \(motion.attitude.quaternion.z) \(motion.attitude.quaternion.w) \(motion.attitude.roll) \(motion.attitude.pitch) \(motion.attitude.yaw)\n"
-                            socketClient.send(text: text)
-                        }
-                    }
+                    _ = sensorDataManager.update(deviceID: 3, motion: motion, timestamps: (currentTime, motion.timestamp))
+                    
+//                    if let socketClient = self.socketClient {
+//                        if socketClient.connection.state == .ready {
+//                            let text = "phone:\(currentTime) \(motion.timestamp) \(motion.userAcceleration.x) \(motion.userAcceleration.y) \(motion.userAcceleration.z) \(motion.attitude.quaternion.x) \(motion.attitude.quaternion.y) \(motion.attitude.quaternion.z) \(motion.attitude.quaternion.w) \(motion.attitude.roll) \(motion.attitude.pitch) \(motion.attitude.yaw)\n"
+//                            socketClient.send(text: text)
+//                        }
+//                    }
                     
                     self.phoneCnt += 1
                     if self.phoneCnt % self.nToMeasureFrequency == 0 {
