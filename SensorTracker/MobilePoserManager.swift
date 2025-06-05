@@ -139,6 +139,10 @@ class MobilePoserManager: ObservableObject {
         self.smpl2imu = out.smpl2imu
         self.device2bone = out.var_299
         self.accOffsets = out.var_302
+        
+        print(self.smpl2imu!)
+        print(self.device2bone!)
+        print(self.accOffsets!)
     }
     func predict(ori_raw: MLMultiArray,
                  acc_raw: MLMultiArray) ->(pose: MLMultiArray,
@@ -237,7 +241,7 @@ class MobilePoserManager: ObservableObject {
         if self.posePredictions.count > self.predictionHistoryLen {
             self.posePredictions.removeFirst()
         }
-        print(rootPos)
+   
         return (curr_pose, pred_joints, rootPos, contact)
         // pose: [72], joints: [24, 3], rootPose: [3], contact: [2]
     }
@@ -247,16 +251,13 @@ class MobilePoserManager: ObservableObject {
                                           joints: MLMultiArray,
                                           rootPos: MLMultiArray,
                                           contact: MLMultiArray)? {
-//        print(ori_raw[3]!)
         
-        let ori_mlArray = unsqueeze_dim0(arr: mlArray_fromDictVector4(from: ori_raw))
-        let acc_mlArray = unsqueeze_dim0(arr: mlArray_fromDictVector3(from: acc_raw))
+        let ori_mlArray = mlArray_fromDictVector4(from: ori_raw)
+        let acc_mlArray = mlArray_fromDictVector3(from: acc_raw)
         
-//        print(ori_mlArray[12])
-        
-//        guard let global_inputs = try? self.sensor2global.prediction(all_ori: ori_mlArray, all_acc: acc_mlArray) else {
-//            return nil
-//        }
+        guard let global_inputs = try? self.sensor2global.prediction(all_ori: ori_mlArray, all_acc: acc_mlArray) else {
+            return nil
+        }
         
         var curr_pose : MLMultiArray
         var pred_joints : MLMultiArray
@@ -272,8 +273,8 @@ class MobilePoserManager: ObservableObject {
         }
 
         if self.imuHistory == nil {
-            guard let output = try? self.modelInitial.prediction(ori_raw_1: ori_mlArray,
-                                                                 acc_raw: acc_mlArray,
+            guard let output = try? self.modelInitial.prediction(ori_raw_1: global_inputs.var_1287,
+                                                                 acc_raw: global_inputs.var_1292,
                                                                  acc_offsets: accOffsets,
                                                                  smpl2imu: smpl2imu,
                                                                  device2bone: device2bone,
@@ -292,8 +293,8 @@ class MobilePoserManager: ObservableObject {
             
         } else {
             guard let output = try? self.model.prediction(imu_1: self.imuHistory!,
-                                                          ori_raw_1: ori_mlArray,
-                                                          acc_raw: acc_mlArray,
+                                                          ori_raw_1: global_inputs.var_1287,
+                                                          acc_raw: global_inputs.var_1292,
                                                           acc_offsets: accOffsets,
                                                           smpl2imu: smpl2imu,
                                                           device2bone: device2bone,
@@ -691,6 +692,7 @@ class SensorDataManager: ObservableObject {
         if let count = rawOriBuffer[deviceID]?.count, count > buffer_size {
             rawOriBuffer[deviceID]?.removeFirst()
         }
+        
         
         // Update last
 //        referenceTimes[deviceID] = (ref.0, timestamps.1)

@@ -357,7 +357,8 @@ struct ContentView: View {
             
             let data = sensorDataManager.getMostRecentIMU()
  
-            let model_outputs = client?.mlManager.predict(ori_raw: data.Ori, acc_raw: data.Acc)
+//            let model_outputs = client?.mlManager.predict(ori_raw: data.Ori, acc_raw: data.Acc)
+            let model_outputs = mobilePoserManager.predict(ori_raw: data.Ori, acc_raw: data.Acc)
             
             if model_outputs != nil {
                 sendDataToUnity(currPose: model_outputs!.pose, rootPos: model_outputs!.rootPos)
@@ -539,7 +540,11 @@ struct ContentView: View {
                 if let motion = motion {
                     let currentTime = NSDate().timeIntervalSince1970
       
+                    sensorDataManager.update(deviceID: 0, motion: motion, timestamps: (currentTime, motion.timestamp))
+                    sensorDataManager.update(deviceID: 1, motion: motion, timestamps: (currentTime, motion.timestamp))
+                    sensorDataManager.update(deviceID: 2, motion: motion, timestamps: (currentTime, motion.timestamp))
                     sensorDataManager.update(deviceID: 3, motion: motion, timestamps: (currentTime, motion.timestamp))
+                    sensorDataManager.update(deviceID: 4, motion: motion, timestamps: (currentTime, motion.timestamp))
                     
                     if let socketClient = self.socketClient {
                         if socketClient.connection.state == .ready {
