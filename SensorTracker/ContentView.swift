@@ -12,12 +12,16 @@ import NearbyInteraction
 import CoreBluetooth
 import CoreML
 
+import UnityFramework
+
 
 struct ContentView: View {
     // device buttons
     @State private var isAirPodsSelected = false
     @State private var isPhoneSelected = false
     @State private var isWatchSelected = false
+    
+    @State private var showingUnity = false
         
     // helpers
     let nToMeasureFrequency = 100
@@ -31,6 +35,10 @@ struct ContentView: View {
     // networking fields
     @State private var socketIPField = "10.127.81.38"
     @State private var socketPortField = "8001"
+    
+    // unity variables
+    @State private var animationTime: Float = 0.0
+
 
     // managers
     @State var phoneMotionManager: CMMotionManager!
@@ -65,15 +73,16 @@ struct ContentView: View {
          }
      }
     
-    @State var sensorDataManager: SensorDataManager
-    
+    @StateObject var sensorDataManager = SensorDataManager()
+    @StateObject var mobilePoserManager = MobilePoserManager()
+        
     init() {
-        self.sensorDataManager = SensorDataManager()
+
     }
     
     // socket
     @State var socketClient: SocketClient?
-    @StateObject  var client = StreamClient(host: "10.105.238.137", port: 8889)
+    @State var client: StreamClient?
     
     var body: some View {
         ZStack{
@@ -152,32 +161,15 @@ struct ContentView: View {
                                 .foregroundColor(.white)
                         }.padding()
                         
-                        // Test model inference latency
-//                        HStack {
-//                            Button(action: {
-//                                modelPrediction()
-//                            }) {
-//                                Text("Test Model")
-//                                    .font(.headline)
-//                                    .foregroundColor(.white)
-//                                    .padding(.vertical, 15)
-//                            }
-//                            .padding([.horizontal], 5)
-//                            .frame(width: 140)
-//                            .background(Color.blue)
-//                            .cornerRadius(10)
-//                            Spacer()
-//                            VStack {
-//                                Label("Inference Latency: ", systemImage: "")
-//                                    .fontWeight(.bold)
-//                                    .foregroundColor(.white)
-//                                Label(self.modelLatency, systemImage: "")
-//                                    .fontWeight(.regular)
-//                                    .foregroundColor(.white)
-//                            }
-//
-//                        }.padding()
-                        
+                        // Unity visualizer button
+                        Button(action: {
+                            launchUnity()
+                        }) {
+                            Text("Unity Visualizer")
+                                .foregroundColor(.white)
+                        }
+                        .buttonBorderShape(.roundedRectangle(radius: 10))
+                                                
                     }.padding()
                 }
                 
@@ -224,13 +216,12 @@ struct ContentView: View {
                             self.isPhoneSelected.toggle()
                             togglePhone()
                             
-                            if client.isConnected{
-                                client.stop()
-                            }
-                            else{
-                                debugPrint("starting phone connection")
-                                client.start()
-                            }
+//                            if client.isConnected{
+//                                client.stop()
+//                            }
+//                            else{
+//                                client.start()
+//                            }
                             
                         }) {
                             Image(systemName: "iphone.gen3")
@@ -290,6 +281,68 @@ struct ContentView: View {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
             .ignoresSafeArea()
+        }
+    }
+
+    // Update the sendDataToUnity function to use a faster-changing time
+    private func sendDataToUnity(currPose: MLMultiArray, rootPos: MLMultiArray) {
+        var poseData = [Float](repeating: 0, count: currPose.count)
+        var translationData = [Float](repeating: 0, count: rootPos.count)
+        
+        for i in 0..<currPose.count {
+            poseData[i] = currPose[i].floatValue
+        }
+        
+        for i in 0..<rootPos.count {
+            translationData[i] = rootPos[i].floatValue
+        }
+        
+        // Format data as expected by Unity: "pose1,pose2,...,pose72#trans1,trans2,trans3$"
+        let poseString = poseData.map { String(format: "%.6f", $0) }.joined(separator: ",")
+        let translationString = translationData.map { String(format: "%.6f", $0) }.joined(separator: ",")
+        let messageString = "\(poseString)#\(translationString)$"
+                
+        // Send directly to Unity GameObject
+        UnityFramework.getInstance()?.sendMessageToGO(
+            withName: "Scripts",
+            functionName: "ReceivePoseData",
+            message: messageString
+        )
+    }
+
+    private func launchUnity() {
+        UnityManager.getInstance().show()
+        showingUnity = true
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.startUnityDataStream()
+        }
+    }
+
+
+
+    private func startUnityDataStream() {
+        Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { timer in
+            guard showingUnity else {
+                timer.invalidate()
+                return
+            }
+            
+            let data = sensorDataManager.getMostRecentIMU()
+ 
+            let model_outputs = client?.mlManager.predict(ori_raw: data.Ori, acc_raw: data.Acc)
+            
+            if model_outputs != nil {
+                sendDataToUnity(currPose: model_outputs!.pose, rootPos: model_outputs!.rootPos)
+            }
+            
+//            let preds = client!.mlManager.getPredictions()
+            
+//            if preds.pose != nil && preds.rootPos != nil {
+//                print("Sending data to Unity")
+//                sendDataToUnity(currPose: preds.pose!, rootPos: preds.rootPos!)
+//            }
+            
         }
     }
     
@@ -352,6 +405,10 @@ struct ContentView: View {
         socketClient = SocketClient(ip: ip, portInt: port, deviceID: deviceIdentifier) { (status) in
             self.updateSocketStatusLabel(status: status)
         }
+        
+        client = StreamClient(host: ip, port: 8890)
+        
+        client?.start()
         
         // update socket client of sessionManager
         self.sessionManager.socketClient = socketClient
@@ -451,19 +508,18 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 self.phoneStatusLabel = "Started!"
             }
-            print("phone motion manager")
             phoneMotionManager.startDeviceMotionUpdates(using: .xTrueNorthZVertical, to: phoneQueue) { (motion, error) in
                 if let motion = motion {
                     let currentTime = NSDate().timeIntervalSince1970
+      
+                    sensorDataManager.update(deviceID: 3, motion: motion, timestamps: (currentTime, motion.timestamp))
                     
-                    _ = sensorDataManager.update(deviceID: 3, motion: motion, timestamps: (currentTime, motion.timestamp))
-                    
-//                    if let socketClient = self.socketClient {
-//                        if socketClient.connection.state == .ready {
-//                            let text = "phone:\(currentTime) \(motion.timestamp) \(motion.userAcceleration.x) \(motion.userAcceleration.y) \(motion.userAcceleration.z) \(motion.attitude.quaternion.x) \(motion.attitude.quaternion.y) \(motion.attitude.quaternion.z) \(motion.attitude.quaternion.w) \(motion.attitude.roll) \(motion.attitude.pitch) \(motion.attitude.yaw)\n"
-//                            socketClient.send(text: text)
-//                        }
-//                    }
+                    if let socketClient = self.socketClient {
+                        if socketClient.connection.state == .ready {
+                            let text = "phone:\(currentTime) \(motion.timestamp) \(motion.userAcceleration.x) \(motion.userAcceleration.y) \(motion.userAcceleration.z) \(motion.attitude.quaternion.x) \(motion.attitude.quaternion.y) \(motion.attitude.quaternion.z) \(motion.attitude.quaternion.w) \(motion.attitude.roll) \(motion.attitude.pitch) \(motion.attitude.yaw)\n"
+                            socketClient.send(text: text)
+                        }
+                    }
                     
                     self.phoneCnt += 1
                     if self.phoneCnt % self.nToMeasureFrequency == 0 {

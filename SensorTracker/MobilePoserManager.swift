@@ -40,12 +40,13 @@ struct Constants {
     ]
 }
 
-class MobilePoserManager {
+class MobilePoserManager: ObservableObject {
     
     // class variables here
     private var model: MobilePoserComplete
     private var modelInitial: MobilePoserCompleteInitial
     private var calibrator: Calibrator
+    private var sensor2global: Sensor2Global
     
 //    private var processInitial: ProcessInputsInitial
 //    private var processRegular: ProcessInputs
@@ -61,6 +62,13 @@ class MobilePoserManager {
     var probThreshold: [Float] = [0.5, 0.9]
     var imuHistory: MLMultiArray? = nil
     
+    var smpl2imu: MLMultiArray?
+    var device2bone: MLMultiArray?
+    var accOffsets: MLMultiArray?
+    
+    var posePredictions = Deque<MLMultiArray>()
+    var rootPosPredictions = Deque<MLMultiArray>()
+    let predictionHistoryLen = 40
     
     // initializer
     init(){
@@ -70,6 +78,7 @@ class MobilePoserManager {
         self.model = try! MobilePoserComplete(configuration: config)
         self.modelInitial = try! MobilePoserCompleteInitial(configuration: MLModelConfiguration())
         self.calibrator = try! Calibrator(configuration: MLModelConfiguration())
+        self.sensor2global = try! Sensor2Global(configuration: MLModelConfiguration())
 
         do {
             let shape: [NSNumber] = [2, 1, 256].map { NSNumber(value: $0) }
@@ -84,6 +93,23 @@ class MobilePoserManager {
         }
     }
     
+    func setCalibrationArrs(acc_offsets: MLMultiArray,
+                            smpl2imu: MLMultiArray,
+                            device2bone: MLMultiArray){
+        self.accOffsets = acc_offsets
+        self.smpl2imu = smpl2imu
+        self.device2bone = device2bone
+    }
+    
+    func getPredictions() -> (pose: MLMultiArray?, rootPos: MLMultiArray?){
+        if self.posePredictions.count != 0 && self.rootPosPredictions.count != 0{
+            return (self.posePredictions.last!, self.rootPosPredictions.last!)
+        }
+        
+        return (nil, nil)
+        
+    }
+    
     func probToWeight(_ p: Float) -> Float {
         let lower = probThreshold[0]
         let upper = probThreshold[1]
@@ -91,28 +117,57 @@ class MobilePoserManager {
         return (clamped - lower) / (upper - lower)
     }
     
-    // class methods
+    func calibrate(imu1_ori: SIMD4<Double>,
+                   accMeans: Dictionary<Int, SIMD3<Double>>,
+                   oriMeans: Dictionary<Int, SIMD4<Double>>) {
+        
+        let imuOri_MLArray = try! MLMultiArray(shape: [4], dataType: .float32)
+
+        for i in 0..<4 {
+            imuOri_MLArray[i] = NSNumber(value: imu1_ori[i])
+        }
+
+        let accMeans_MLArray = mlArray_fromDictVector3(from: accMeans)
+        let oriMeans_MLArray = mlArray_fromDictVector4(from: oriMeans)
+        
+        guard let out = try? self.calibrator.prediction(imu1_ori: imuOri_MLArray,
+                                                   oriMean: oriMeans_MLArray,
+                                                   accMean: accMeans_MLArray) else {
+            return
+        }
+                    
+        self.smpl2imu = out.smpl2imu
+        self.device2bone = out.var_299
+        self.accOffsets = out.var_302
+    }
     func predict(ori_raw: MLMultiArray,
-                 acc_raw: MLMultiArray,
-                 acc_offsets: MLMultiArray,
-                 smpl2imu: MLMultiArray,
-                 device2bone: MLMultiArray) ->(pose: MLMultiArray,
-                                              joints: MLMultiArray,
-                                              rootPos: MLMultiArray,
-                                              contact: MLMultiArray)? {
+                 acc_raw: MLMultiArray) ->(pose: MLMultiArray,
+                                          joints: MLMultiArray,
+                                          rootPos: MLMultiArray,
+                                          contact: MLMultiArray)? {
+        
         var curr_pose : MLMultiArray
         var pred_joints : MLMultiArray
         var pred_vel : MLMultiArray
         var contact : MLMultiArray
-        let startTime = DispatchTime.now()
+        
+        guard
+            let accOffsets = self.accOffsets,
+            let smpl2imu = self.smpl2imu,
+            let device2bone = self.device2bone
+        else {
+            return nil
+        }
+        
+
         if self.imuHistory == nil {
             guard let output = try? self.modelInitial.prediction(ori_raw_1: ori_raw,
-                                                          acc_raw: acc_raw,
-                                                          acc_offsets: acc_offsets,
-                                                          smpl2imu: smpl2imu,
-                                                          device2bone: device2bone,
-                                                          h: self.h,
-                                                          c_1: self.c)
+                                                                 acc_raw: acc_raw,
+                                                                 acc_offsets: accOffsets,
+                                                                 smpl2imu: smpl2imu,
+                                                                 device2bone: device2bone,
+                                                                 h: self.h,
+                                                                 c_1: self.c)
             else {
                 return nil
             }
@@ -128,7 +183,7 @@ class MobilePoserManager {
             guard let output = try? self.model.prediction(imu_1: self.imuHistory!,
                                                           ori_raw_1: ori_raw,
                                                           acc_raw: acc_raw,
-                                                          acc_offsets: acc_offsets,
+                                                          acc_offsets: accOffsets,
                                                           smpl2imu: smpl2imu,
                                                           device2bone: device2bone,
                                                           h: self.h,
@@ -144,15 +199,6 @@ class MobilePoserManager {
             self.c = output.var_444
             self.imuHistory = output.imu
         }
-        
-        let endTime = DispatchTime.now()
-        let elapsedTime = endTime.uptimeNanoseconds - startTime.uptimeNanoseconds // Time in nanoseconds (UInt64)
-        let durationInSeconds = Double(elapsedTime) / 1_000_000_000.0 // Convert to seconds
-        
-        print("----------------------------------------------------")
-        print("Model Execution time:")
-        print("Nanoseconds: \(elapsedTime)")
-        print("Seconds: \(String(format: "%.6f", durationInSeconds)) seconds") // Formatted to 6 decimal places
         
         let lfootPos = vector3_fromArray(from: pred_joints, at: 10)
         let rfootPos = vector3_fromArray(from: pred_joints, at: 11)
@@ -177,15 +223,182 @@ class MobilePoserManager {
         currentRootY += velocity.y
         lastLFootPos = lfootPos
         lastRFootPos = rfootPos
-        lastRootPos += velocity
-        let rootPos = try! mlArray_fromVector3(from: lastRootPos)
+        self.lastRootPos += velocity
+        let rootPos = try! mlArray_fromVector3(from: self.lastRootPos)
         
+        // store pose for getter
+        self.rootPosPredictions.append(rootPos)
+        self.posePredictions.append(curr_pose)
+        
+        if self.rootPosPredictions.count > self.predictionHistoryLen {
+            self.rootPosPredictions.removeFirst()
+        }
+        
+        if self.posePredictions.count > self.predictionHistoryLen {
+            self.posePredictions.removeFirst()
+        }
+        print(rootPos)
         return (curr_pose, pred_joints, rootPos, contact)
+        // pose: [72], joints: [24, 3], rootPose: [3], contact: [2]
+    }
+    
+    func predict(ori_raw: Dictionary<Int, SIMD4<Double>>,
+                 acc_raw: Dictionary<Int, SIMD3<Double>>) ->(pose: MLMultiArray,
+                                          joints: MLMultiArray,
+                                          rootPos: MLMultiArray,
+                                          contact: MLMultiArray)? {
+//        print(ori_raw[3]!)
+        
+        let ori_mlArray = unsqueeze_dim0(arr: mlArray_fromDictVector4(from: ori_raw))
+        let acc_mlArray = unsqueeze_dim0(arr: mlArray_fromDictVector3(from: acc_raw))
+        
+//        print(ori_mlArray[12])
+        
+//        guard let global_inputs = try? self.sensor2global.prediction(all_ori: ori_mlArray, all_acc: acc_mlArray) else {
+//            return nil
+//        }
+        
+        var curr_pose : MLMultiArray
+        var pred_joints : MLMultiArray
+        var pred_vel : MLMultiArray
+        var contact : MLMultiArray
+        
+        guard
+            let accOffsets = self.accOffsets,
+            let smpl2imu = self.smpl2imu,
+            let device2bone = self.device2bone
+        else {
+            return nil
+        }
+
+        if self.imuHistory == nil {
+            guard let output = try? self.modelInitial.prediction(ori_raw_1: ori_mlArray,
+                                                                 acc_raw: acc_mlArray,
+                                                                 acc_offsets: accOffsets,
+                                                                 smpl2imu: smpl2imu,
+                                                                 device2bone: device2bone,
+                                                                 h: self.h,
+                                                                 c_1: self.c)
+            else {
+                return nil
+            }
+            curr_pose = output.var_632
+            pred_joints = output.var_641
+            pred_vel = output.var_665
+            contact = output.var_647
+            self.h = output.var_434
+            self.c = output.var_435
+            self.imuHistory = output.imu
+            
+        } else {
+            guard let output = try? self.model.prediction(imu_1: self.imuHistory!,
+                                                          ori_raw_1: ori_mlArray,
+                                                          acc_raw: acc_mlArray,
+                                                          acc_offsets: accOffsets,
+                                                          smpl2imu: smpl2imu,
+                                                          device2bone: device2bone,
+                                                          h: self.h,
+                                                          c_1: self.c)
+            else {
+                return nil
+            }
+            
+            curr_pose = output.var_641
+            pred_joints = output.var_650
+            pred_vel = output.var_674
+            contact = output.var_656
+            self.h = output.var_443
+            self.c = output.var_444
+            self.imuHistory = output.imu
+        }
+        
+        let lfootPos = vector3_fromArray(from: pred_joints, at: 10)
+        let rfootPos = vector3_fromArray(from: pred_joints, at: 11)
+        let predVel = vector3_fromArray(from: pred_vel, at: 0)
+        let contactX = contact[0].floatValue
+        let contactY = contact[1].floatValue
+        let contactVel: SIMD3<Float> = contactX > contactY
+          ? (lastLFootPos - lfootPos + gravityVelocity)
+          : (lastRFootPos - rfootPos + gravityVelocity)
+
+        let w = probToWeight(max(contactX, contactY))
+
+        // linear interp for velcoity
+        var velocity = lerp(predVel, contactVel, t: w)
+
+        let currentFootY = currentRootY + min(lfootPos.y, rfootPos.y)
+        if currentFootY + velocity.y <= floorY {
+          velocity.y = floorY - currentFootY
+        }
+        
+        // update states
+        currentRootY += velocity.y
+        lastLFootPos = lfootPos
+        lastRFootPos = rfootPos
+        self.lastRootPos += velocity
+        let rootPos = try! mlArray_fromVector3(from: self.lastRootPos)
+        
+        // store pose for getter
+        self.rootPosPredictions.append(rootPos)
+        self.posePredictions.append(curr_pose)
+        
+        if self.rootPosPredictions.count > self.predictionHistoryLen {
+            self.rootPosPredictions.removeFirst()
+        }
+        
+        if self.posePredictions.count > self.predictionHistoryLen {
+            self.posePredictions.removeFirst()
+        }
+
+        return (curr_pose, pred_joints, rootPos, contact)
+        // pose: [72], joints: [24, 3], rootPose: [3], contact: [2]
     }
 }
 
+func unsqueeze_dim0(arr: MLMultiArray) -> MLMultiArray {
+    let oldShape = arr.shape.map { $0.intValue }
+    let newShapeNums = [NSNumber(value: 1)] + oldShape.map { NSNumber(value: $0) }
+    let output = try! MLMultiArray(shape: newShapeNums, dataType: arr.dataType)
+
+    let count = arr.count
+    for i in 0..<count {
+        output[i] = arr[i]
+    }
+    return output
+}
 
 
+func mlArray_fromDictVector3(from vectors: Dictionary<Int, SIMD3<Double>>) -> MLMultiArray {
+    let mlArray = try! MLMultiArray(shape: [5, 3], dataType: .float32)
+    for row in 0..<5 {
+        guard
+            let vec = vectors[row]
+        else {
+            continue
+        }
+        
+        for col in 0..<3 {
+            mlArray[row * 3 + col] = NSNumber(value: vec[col])
+        }
+    }
+    return mlArray
+}
+
+func mlArray_fromDictVector4(from vectors: Dictionary<Int, SIMD4<Double>>) -> MLMultiArray {
+    let mlArray = try! MLMultiArray(shape: [5, 4], dataType: .float32)
+    for row in 0..<5 {
+        guard
+            let vec = vectors[row]
+        else {
+            continue
+        }
+        
+        for col in 0..<4 {
+            mlArray[row * 4 + col] = NSNumber(value: vec[col])
+        }
+    }
+    return mlArray
+}
 
 func mlArray_fromVector3(from vector: SIMD3<Float>) throws -> MLMultiArray {
     // converts SIMD3 into MLMultiArray
@@ -233,7 +446,7 @@ func lerp(_ a: SIMD3<Float>, _ b: SIMD3<Float>, t: Float) -> SIMD3<Float> {
 class StreamClient: ObservableObject {
     let connection: NWConnection
     private var buffer = Data()
-    private var mlManager: MobilePoserManager
+    var mlManager: MobilePoserManager
     @Published var isConnected: Bool = false
 
     init(host: String, port: UInt16) {
@@ -276,7 +489,6 @@ class StreamClient: ObservableObject {
     private func receiveLoop() {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, isComplete, error in
             if let data = data, !data.isEmpty {
-                debugPrint("Received tensors")
                 self.buffer.append(data)
                 self.processBuffer()
             }
@@ -311,15 +523,14 @@ class StreamClient: ObservableObject {
             // parse and run model
             if let arrays = parseTensors(from: payload) {
                 
-                guard let output = mlManager.predict(ori_raw: arrays[0],
-                                                     acc_raw: arrays[1],
-                                                     acc_offsets: arrays[2],
-                                                     smpl2imu: arrays[3],
-                                                     device2bone: arrays[4]) else {
-                    debugPrint("model failed")
-                    continue
-                }
-                sendOutputs(outputs: output)
+                mlManager.setCalibrationArrs(acc_offsets: arrays[2], smpl2imu: arrays[3], device2bone: arrays[4])
+                
+//                guard let output = mlManager.predict(ori_raw: arrays[0],
+//                                                     acc_raw: arrays[1]) else {
+//                    debugPrint("model failed")
+//                    continue
+//                }
+//                sendOutputs(outputs: output)
             }
         }
     }
@@ -431,7 +642,7 @@ class StreamClient: ObservableObject {
 // Adapted from sensor_utils.py
 //
 
-class SensorDataManager {
+class SensorDataManager: ObservableObject {
 
     private var buffer_size = 45
 
@@ -448,26 +659,28 @@ class SensorDataManager {
             referenceTimes[id]     = (-1, -1)
         }
     }
-        
 
     func update(
         deviceID: DeviceID,
         motion: CMDeviceMotion,
         timestamps: (Double, Double)
-    ) -> Double {
+    ) {
         
-        if referenceTimes[deviceID] == nil {
-            referenceTimes[deviceID] = timestamps
-        }
-        
-        guard let ref = referenceTimes[deviceID] else {
-            return timestamps.1
-        }
-        
-        let currTimestamp = ref.0 + (timestamps.1 - ref.1)
+//        if referenceTimes[deviceID] == nil {
+//            referenceTimes[deviceID] = timestamps
+//        }
+//        
+//        guard let ref = referenceTimes[deviceID] else {
+//            return timestamps.1
+//        }
+//        
+//        let currTimestamp = ref.0 + (timestamps.1 - ref.1)
         
         let currAcc = SIMD3<Double>(motion.userAcceleration.x, motion.userAcceleration.y, motion.userAcceleration.z)
         let currOri = SIMD4<Double>(motion.attitude.quaternion.x, motion.attitude.quaternion.y, motion.attitude.quaternion.z, motion.attitude.quaternion.w)
+        
+//        print("Ori Value:")
+//        print(currOri)
         
         rawAccBuffer[deviceID]?.append(currAcc)
         if let count = rawAccBuffer[deviceID]?.count, count > buffer_size {
@@ -480,8 +693,12 @@ class SensorDataManager {
         }
         
         // Update last
-        referenceTimes[deviceID] = (ref.0, timestamps.1)
-        return currTimestamp
+//        referenceTimes[deviceID] = (ref.0, timestamps.1)
+//        return currTimestamp
+        
+//        print("Most recent IMU call: ")
+//        let recents = getMostRecentIMU()
+//        print(recents.Ori[deviceID]!)
     }
     
     func getTimestamp(deviceID: DeviceID) -> Double? {
@@ -494,8 +711,24 @@ class SensorDataManager {
         return rawAccBuffer[deviceID]?.last
     }
     
-    func getCurrentBuffer() -> (Dictionary<DeviceID, Deque<SIMD3<Double>>>, Dictionary<DeviceID, Deque<SIMD4<Double>>>){
+    func getCurrentBuffer() -> (Acc: Dictionary<DeviceID, Deque<SIMD3<Double>>>, Ori: Dictionary<DeviceID, Deque<SIMD4<Double>>>){
         return (rawAccBuffer, rawOriBuffer)
+    }
+    
+    func getMostRecentIMU() -> (Acc: Dictionary<DeviceID, SIMD3<Double>>, Ori: Dictionary<DeviceID, SIMD4<Double>>){
+        var accs = Dictionary<DeviceID, SIMD3<Double>>()
+        var oris = Dictionary<DeviceID, SIMD4<Double>>()
+        
+        for id in Constants.DEVICE_IDS.values {
+            
+            let acc = self.rawAccBuffer[id]?.last ?? SIMD3<Double>(0, 0, 0) // error here?
+            accs[id] = acc
+
+            let ori = self.rawOriBuffer[id]?.last ?? SIMD4<Double>(0, 0, 0, 0)
+            oris[id] = ori
+        }
+        
+        return (accs, oris)
     }
     
     func getMeanMeasurement(numSeconds: TimeInterval = 3.0,
