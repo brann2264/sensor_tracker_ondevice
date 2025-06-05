@@ -47,7 +47,7 @@ struct ContentView: View {
     @State var headphoneQueue = OperationQueue()
 
     // watch manager
-    @StateObject var sessionManager = SessionManager(socketClient: nil)
+    @StateObject var sessionManager = SessionManager(socketClient: nil, sensorDataManager: nil)
     
     // phone
     @State var phoneCnt = 0
@@ -84,6 +84,8 @@ struct ContentView: View {
     @State var socketClient: SocketClient?
     @State var client: StreamClient?
     
+    @State private var directionsText: String = "Press Start Calibration to Begin"
+    
     var body: some View {
         ZStack{
             Color(Color.black)
@@ -94,14 +96,14 @@ struct ContentView: View {
                 
                 // networking stack
                 VStack {
-                    Text("Network")
-                        .font(.largeTitle)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.white)
-                    Divider()
-                        .background(.white)
-                        .padding([.leading, .trailing])
-                    
+//                    Text("Network")
+//                        .font(.largeTitle)
+//                        .fontWeight(.medium)
+//                        .foregroundStyle(.white)
+//                    Divider()
+//                        .background(.white)
+//                        .padding([.leading, .trailing])
+//                    
                     VStack {
                         HStack {
                             // socket text field
@@ -162,7 +164,10 @@ struct ContentView: View {
                         }.padding()
                         
                         Button(action: {
-                            startCalibration()
+                            Task {
+                                    await startCalibration()
+                            }
+//                            startCalibration()
                         }) {
                             Text("Start Calibration")
                                 .foregroundColor(.white)
@@ -181,6 +186,13 @@ struct ContentView: View {
                                                 
                     }.padding()
                 }
+                
+                Spacer()
+                
+                Text("\(self.directionsText)")
+                        .foregroundColor(.secondary)
+                
+                Spacer()
                 
                 VStack(alignment: .leading) {
                     Text("Sampling Rate: \(Int(localSamplingRate)) Hz")
@@ -328,22 +340,35 @@ struct ContentView: View {
         }
     }
     
-    private func startCalibration() {
+    private func startCalibration() async {
         
         print("Put imu 1 aligned with your body reference frame (x = Left, y = Up, z = Forward)")
-        Thread.sleep(forTimeInterval: 2)
+        self.directionsText = "Put imu 1 aligned with your body reference frame (x = Left, y = Up, z = Forward)"
+        
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        
         print("Keep for 3 seconds ...")
+        self.directionsText = "Keep for 3 seconds ..."
         let measurements = sensorDataManager.getMeanMeasurement(numSeconds: 3, bufferLen: 40)
         let oris = measurements.meanQuaternions[0]!
         
-        print("\tFinish.\nWear all imus correctly")
-        Thread.sleep(forTimeInterval: 2)
+        print("Wear all imus correctly")
+        self.directionsText = "\tFinish.\nWear all imus correctly"
+        
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        
         print("\rStand straight in T-pose and be ready. The calibration will begin after 3 seconds.")
+        
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        
+        self.directionsText = "\rStand straight in T-pose and be ready. The calibration will begin after 3 seconds."
         
         let measurements2 = sensorDataManager.getMeanMeasurement(numSeconds: 3, bufferLen: 40)
         mobilePoserManager.calibrate(imu1_ori: oris, accMeans: measurements2.meanAccelerations, oriMeans: measurements2.meanQuaternions)
         
         print("Calibration done. Access Unity Visualize to see the pose estimations")
+        self.directionsText = "Calibration done. Access Unity Visualize to see the pose estimations"
+        launchUnity()
     }
 
 
@@ -465,6 +490,8 @@ struct ContentView: View {
         print("is paired: ", WCSession.default.isPaired)
         print("is reachable: ", WCSession.default.isReachable)
         
+        self.sessionManager.sensorDataManager = self.sensorDataManager
+        
         if (WCSession.default.isReachable) {
             do {
                 try WCSession.default.updateApplicationContext(["samplingRate": localSamplingRate])
@@ -546,12 +573,12 @@ struct ContentView: View {
                     sensorDataManager.update(deviceID: 3, motion: motion, timestamps: (currentTime, motion.timestamp))
                     sensorDataManager.update(deviceID: 4, motion: motion, timestamps: (currentTime, motion.timestamp))
                     
-                    if let socketClient = self.socketClient {
-                        if socketClient.connection.state == .ready {
-                            let text = "phone:\(currentTime) \(motion.timestamp) \(motion.userAcceleration.x) \(motion.userAcceleration.y) \(motion.userAcceleration.z) \(motion.attitude.quaternion.x) \(motion.attitude.quaternion.y) \(motion.attitude.quaternion.z) \(motion.attitude.quaternion.w) \(motion.attitude.roll) \(motion.attitude.pitch) \(motion.attitude.yaw)\n"
-                            socketClient.send(text: text)
-                        }
-                    }
+//                    if let socketClient = self.socketClient {
+//                        if socketClient.connection.state == .ready {
+//                            let text = "phone:\(currentTime) \(motion.timestamp) \(motion.userAcceleration.x) \(motion.userAcceleration.y) \(motion.userAcceleration.z) \(motion.attitude.quaternion.x) \(motion.attitude.quaternion.y) \(motion.attitude.quaternion.z) \(motion.attitude.quaternion.w) \(motion.attitude.roll) \(motion.attitude.pitch) \(motion.attitude.yaw)\n"
+//                            socketClient.send(text: text)
+//                        }
+//                    }
                     
                     self.phoneCnt += 1
                     if self.phoneCnt % self.nToMeasureFrequency == 0 {
@@ -645,8 +672,9 @@ class SessionManager: NSObject, ObservableObject, WCSessionDelegate {
     var watchSetFrequency: Double? = 25.0
     var watchMeasuredFrequency: Double? = 25.0
     var socketClient: SocketClient?
+    var sensorDataManager: SensorDataManager?
     
-    init(socketClient: SocketClient?) {
+    init(socketClient: SocketClient?, sensorDataManager: SensorDataManager?) {
         super.init()
         if WCSession.isSupported() {
             let session = WCSession.default
@@ -654,6 +682,7 @@ class SessionManager: NSObject, ObservableObject, WCSessionDelegate {
             session.activate()
         }
         self.socketClient = socketClient
+        self.sensorDataManager = sensorDataManager
     }
     
     func sessionDidBecomeInactive(_ session: WCSession) {
@@ -678,20 +707,22 @@ class SessionManager: NSObject, ObservableObject, WCSessionDelegate {
             //self.watchData = motionData
             if let socketClient = self.socketClient {
                 if socketClient.connection.state == .ready {
+                    print("receiving watch data")
                     let text = "watch:" + motionData
-                    socketClient.send(text: text)
+                    sensorDataManager?.update(dataString: text)
+//                    socketClient.send(text: text)
                 }
             }
-            watchCnt += 1
-            if watchCnt % nToMeasureFrequency == 0 {
-                let currentTime = NSDate().timeIntervalSince1970
-                let timeDiff = (currentTime - self.watchPrevTime) as Double
-                watchPrevTime = currentTime
-                watchMeasuredFrequency = 1.0 / timeDiff * Double(nToMeasureFrequency)
-                DispatchQueue.main.async {
-                    self.watchStatusLabel = "\(self.watchCnt) data / \(round(self.watchMeasuredFrequency! * 100) / 100) [Hz]"
-                }
-            }
+//            watchCnt += 1
+//            if watchCnt % nToMeasureFrequency == 0 {
+//                let currentTime = NSDate().timeIntervalSince1970
+//                let timeDiff = (currentTime - self.watchPrevTime) as Double
+//                watchPrevTime = currentTime
+//                watchMeasuredFrequency = 1.0 / timeDiff * Double(nToMeasureFrequency)
+//                DispatchQueue.main.async {
+//                    self.watchStatusLabel = "\(self.watchCnt) data / \(round(self.watchMeasuredFrequency! * 100) / 100) [Hz]"
+//                }
+//            }
         }
     }
     

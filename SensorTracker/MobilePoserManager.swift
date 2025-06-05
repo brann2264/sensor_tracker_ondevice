@@ -24,20 +24,6 @@ struct Constants {
     static let KEYS = ["unix_timestamp", "sensor_timestamp", "accel_x", "accel_y", "accel_z", "quart_x", "quart_y", "quart_z", "quart_w", "roll", "pitch", "yaw"]
     static let STOP = "stop"
     static let SEP = ":"
-    static let combos: [String: [Int]] = [
-        "lw_rp_h": [0, 3, 4],
-        "rw_rp_h": [1, 3, 4],
-        "lw_lp_h": [0, 2, 4],
-        "rw_lp_h": [1, 2, 4],
-        "lw_lp":   [0, 2],
-        "lw_rp":   [0, 3],
-        "rw_lp":   [1, 2],
-        "rw_rp":   [1, 3],
-        "lp_h":    [2, 4],
-        "rp_h":    [3, 4],
-        "lp":      [2],
-        "rp":      [3]
-    ]
 }
 
 class MobilePoserManager: ObservableObject {
@@ -70,6 +56,10 @@ class MobilePoserManager: ObservableObject {
     var rootPosPredictions = Deque<MLMultiArray>()
     let predictionHistoryLen = 40
     
+    var phone = true
+    var watch = false
+    var headphones = false
+    
     // initializer
     init(){
         
@@ -90,6 +80,19 @@ class MobilePoserManager: ObservableObject {
             memset(self.c.dataPointer, 0, byteCount)
         } catch {
             fatalError("Could not allocate array: \(error)")
+        }
+    }
+    
+    func updateDevices(device: String, status: Bool){
+        switch device {
+        case "Phone":
+            self.phone = status
+        case "Watch":
+            self.watch = status
+        case "Headphones":
+            self.headphones = status
+        default:
+            return
         }
     }
     
@@ -171,8 +174,7 @@ class MobilePoserManager: ObservableObject {
                                                                  smpl2imu: smpl2imu,
                                                                  device2bone: device2bone,
                                                                  h: self.h,
-                                                                 c_1: self.c)
-            else {
+                                                             c_1: self.c) else {
                 return nil
             }
             curr_pose = output.var_632
@@ -184,6 +186,7 @@ class MobilePoserManager: ObservableObject {
             self.imuHistory = output.imu
             
         } else {
+            
             guard let output = try? self.model.prediction(imu_1: self.imuHistory!,
                                                           ori_raw_1: ori_raw,
                                                           acc_raw: acc_raw,
@@ -202,6 +205,7 @@ class MobilePoserManager: ObservableObject {
             self.h = output.var_443
             self.c = output.var_444
             self.imuHistory = output.imu
+            
         }
         
         let lfootPos = vector3_fromArray(from: pred_joints, at: 10)
@@ -667,21 +671,8 @@ class SensorDataManager: ObservableObject {
         timestamps: (Double, Double)
     ) {
         
-//        if referenceTimes[deviceID] == nil {
-//            referenceTimes[deviceID] = timestamps
-//        }
-//        
-//        guard let ref = referenceTimes[deviceID] else {
-//            return timestamps.1
-//        }
-//        
-//        let currTimestamp = ref.0 + (timestamps.1 - ref.1)
-        
         let currAcc = SIMD3<Double>(motion.userAcceleration.x, motion.userAcceleration.y, motion.userAcceleration.z)
         let currOri = SIMD4<Double>(motion.attitude.quaternion.x, motion.attitude.quaternion.y, motion.attitude.quaternion.z, motion.attitude.quaternion.w)
-        
-//        print("Ori Value:")
-//        print(currOri)
         
         rawAccBuffer[deviceID]?.append(currAcc)
         if let count = rawAccBuffer[deviceID]?.count, count > buffer_size {
@@ -692,15 +683,57 @@ class SensorDataManager: ObservableObject {
         if let count = rawOriBuffer[deviceID]?.count, count > buffer_size {
             rawOriBuffer[deviceID]?.removeFirst()
         }
+    }
+    
+    func update(dataString: String){
+    
+        let components = dataString.split(separator: " ").map { String($0) }
+
+        func toDouble(_ stringValue: String) -> Double? {
+            guard let doubleValue = Double(stringValue) else {
+                return nil
+            }
+            return doubleValue
+        }
         
+        var deviceID: Int
         
-        // Update last
-//        referenceTimes[deviceID] = (ref.0, timestamps.1)
-//        return currTimestamp
+        switch components[0] {
+        case "watch":
+            print("updating with watch content")
+            deviceID = 0
+        case "phone":
+            print("Not implemented yet")
+            return
+        default:
+            return
+        }
         
-//        print("Most recent IMU call: ")
-//        let recents = getMostRecentIMU()
-//        print(recents.Ori[deviceID]!)
+        guard
+            let accX = toDouble(components[3]),
+            let accY = toDouble(components[4]),
+            let accZ = toDouble(components[5]),
+            let quatX = toDouble(components[6]),
+            let quatY = toDouble(components[7]),
+            let quatZ = toDouble(components[8]),
+            let quatW = toDouble(components[9])
+        else {
+            return
+        }
+        
+        let acc = SIMD3<Double>(accX, accY, accZ)
+        let ori = SIMD4<Double>(quatX, quatY, quatZ, quatW)
+        
+        rawAccBuffer[deviceID]?.append(acc)
+        if let count = rawAccBuffer[deviceID]?.count, count > buffer_size {
+            rawAccBuffer[deviceID]?.removeFirst()
+        }
+        
+        rawOriBuffer[deviceID]?.append(ori)
+        if let count = rawOriBuffer[deviceID]?.count, count > buffer_size {
+            rawOriBuffer[deviceID]?.removeFirst()
+        }
+                            
     }
     
     func getTimestamp(deviceID: DeviceID) -> Double? {
