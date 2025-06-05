@@ -161,6 +161,15 @@ struct ContentView: View {
                                 .foregroundColor(.white)
                         }.padding()
                         
+                        Button(action: {
+                            startCalibration()
+                        }) {
+                            Text("Start Calibration")
+                                .foregroundColor(.white)
+                        }
+                        .buttonBorderShape(.roundedRectangle(radius: 10))
+                        
+                        
                         // Unity visualizer button
                         Button(action: {
                             launchUnity()
@@ -317,6 +326,24 @@ struct ContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.startUnityDataStream()
         }
+    }
+    
+    private func startCalibration() {
+        
+        print("Put imu 1 aligned with your body reference frame (x = Left, y = Up, z = Forward)")
+        Thread.sleep(forTimeInterval: 2)
+        print("Keep for 3 seconds ...")
+        let measurements = sensorDataManager.getMeanMeasurement(numSeconds: 3, bufferLen: 40)
+        let oris = measurements.meanQuaternions[0]!
+        
+        print("\tFinish.\nWear all imus correctly")
+        Thread.sleep(forTimeInterval: 2)
+        print("\rStand straight in T-pose and be ready. The calibration will begin after 3 seconds.")
+        
+        let measurements2 = sensorDataManager.getMeanMeasurement(numSeconds: 3, bufferLen: 40)
+        mobilePoserManager.calibrate(imu1_ori: oris, accMeans: measurements2.meanAccelerations, oriMeans: measurements2.meanQuaternions)
+        
+        print("Calibration done. Access Unity Visualize to see the pose estimations")
     }
 
 
